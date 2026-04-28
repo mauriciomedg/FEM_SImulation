@@ -11,9 +11,9 @@ public class SimulationManager : MonoBehaviour
     }
 
     // Update is called once per frame
-    void Update()
-    {
-        float value = FEMPlugin.StepTest(Time.deltaTime);
-        Debug.Log($"Native test value: {value}");
-    }
+    //void Update()
+    //{
+    //    float value = FEMPlugin.StepTest(Time.deltaTime);
+    //    Debug.Log($"Native test value: {value}");
+    //}
 }
