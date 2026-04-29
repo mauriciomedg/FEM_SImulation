@@ -12,11 +12,46 @@ struct Vec3
 static Vec3 operator+(const Vec3& a, const Vec3& b) { return { a.x + b.x, a.y + b.y, a.z + b.z }; }
 static Vec3 operator-(const Vec3& a, const Vec3& b) { return { a.x - b.x, a.y - b.y, a.z - b.z }; }
 static Vec3 operator*(const Vec3& v, float s) { return { v.x * s, v.y * s, v.z * s }; }
+static Vec3 operator/(const Vec3& v, float s) { return { v.x / s, v.y / s, v.z / s }; }
+
+static Vec3& operator+=(Vec3& a, const Vec3& b)
+{
+    a.x += b.x;
+    a.y += b.y;
+    a.z += b.z;
+    return a;
+}
+
+static float Dot(const Vec3& a, const Vec3& b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+static float Length(const Vec3& v)
+{
+    return std::sqrt(Dot(v, v));
+}
+
+static Vec3 Normalize(const Vec3& v)
+{
+    float len = Length(v);
+    if (len < 1e-8f)
+        return { 0.0f, 0.0f, 0.0f };
+    return v / len;
+}
 
 struct Tet
 {
     int i0, i1, i2, i3;
 };
+
+struct Edge
+{
+    int i;
+    int j;
+    float restLength;
+};
+
 
 struct Node
 {
@@ -27,13 +62,21 @@ struct Node
     bool isFixed;
 };
 
-
 static std::vector<Vec3> g_restNodes;
 static std::vector<Node> g_nodes;
 static std::vector<Tet> g_tets;
+static std::vector<Edge> g_edges;
+
 
 //static std::vector<float> g_originalVertices;
 //static std::vector<float> g_deformedVertices;
+
+static void AddEdge(int i, int j)
+{
+    Vec3 d = g_restNodes[j] - g_restNodes[i];
+    float restLength = Length(d);
+    g_edges.push_back({ i, j, restLength });
+}
 
 extern "C"
 {
@@ -42,6 +85,7 @@ extern "C"
         g_restNodes.clear();
         g_nodes.clear();
         g_tets.clear();
+        g_edges.clear();
     }
 
     int GetPluginVersion()
@@ -54,6 +98,7 @@ extern "C"
         g_restNodes.clear();
         g_nodes.clear();
         g_tets.clear();
+        g_edges.clear();
 
         g_restNodes.push_back({ 0.0f, 0.0f, 0.0f });
         g_restNodes.push_back({ 1.0f, 0.0f, 0.0f });
@@ -90,18 +135,64 @@ extern "C"
         g_nodes.push_back(n3);
 
         g_tets.push_back({ 0, 1, 2, 3 });
+
+        // 6 edges of a tetrahedron
+        AddEdge(0, 1);
+        AddEdge(0, 2);
+        AddEdge(0, 3);
+        AddEdge(1, 2);
+        AddEdge(1, 3);
+        AddEdge(2, 3);
     }
 
     void StepSimulation(float dt)
     {
-        if (g_nodes.size() != g_restNodes.size())
+        if (dt <= 0.0f)
             return;
 
         const Vec3 gravity = { 0.0f, -9.81f, 0.0f };
-        const float kRest = 25.0f;
-        const float damping = 4.0f;
+        const float globalDamping = 0.5f;
+        const float edgeStiffness = 80.0f;
+        const float edgeDamping = 3.0f;
 
         const int nodeCount = static_cast<int>(g_nodes.size());
+        std::vector<Vec3> forces(nodeCount, { 0.0f, 0.0f, 0.0f });
+
+        for (int i = 0; i < nodeCount; ++i)
+        {
+            if (!g_nodes[i].isFixed && g_nodes[i].invMass > 0.0f)
+            {
+                float mass = 1.0f / g_nodes[i].invMass;
+                forces[i] += gravity * mass;
+                forces[i] += g_nodes[i].velocity * (-globalDamping);
+            }
+        }
+
+        for (const Edge& edge : g_edges)
+        {
+            Node& ni = g_nodes[edge.i];
+            Node& nj = g_nodes[edge.j];
+
+            Vec3 delta = nj.position - ni.position;
+            float currentLength = Length(delta);
+            if (currentLength < 1e-8f)
+                continue;
+
+            Vec3 dir = delta / currentLength;
+
+            float stretch = currentLength - edge.restLength;
+
+            Vec3 relativeVelocity = nj.velocity - ni.velocity;
+            float relVelAlongEdge = Dot(relativeVelocity, dir);
+
+            float springForceMagnitude = edgeStiffness * stretch;
+            float dampingForceMagnitude = edgeDamping * relVelAlongEdge;
+
+            Vec3 force = dir * (springForceMagnitude + dampingForceMagnitude);
+
+            forces[edge.i] += force;
+            forces[edge.j] += force * (-1.0f);
+        }
 
         for (int i = 0; i < nodeCount; ++i)
         {
@@ -114,14 +205,9 @@ extern "C"
                 continue;
             }
 
-            Vec3 displacement = node.position - g_restNodes[i];
-            Vec3 restoringForce = displacement * (-kRest);
-            Vec3 dampingForce = node.velocity * (-damping);
-
-            Vec3 acceleration = gravity + restoringForce + dampingForce;
-
-            node.velocity = node.velocity + acceleration * dt;
-            node.position = node.position + node.velocity * dt;
+            Vec3 acceleration = forces[i] * node.invMass;
+            node.velocity += acceleration * dt;
+            node.position += node.velocity * dt;
         }
     }
 
@@ -135,8 +221,7 @@ extern "C"
         if (outPositions == nullptr || nodeCount <= 0)
             return;
 
-        const int availableNodes = static_cast<int>(g_nodes.size());
-        const int count = min(nodeCount, availableNodes);
+        const int count = min(nodeCount, static_cast<int>(g_nodes.size()));
 
         for (int i = 0; i < count; ++i)
         {
