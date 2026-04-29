@@ -9,6 +9,7 @@ public class FEMObject : MonoBehaviour
 
     private float[] _nodePositionBuffer;
     private int[] _tetIndexBuffer;
+    private int[] _fixedNodeFlags;
 
     private Vector3[] _nodePositions;
     private GameObject[] _nodeDebugObjects;
@@ -40,11 +41,13 @@ public class FEMObject : MonoBehaviour
 
         _nodePositionBuffer = new float[nodeCount * 3];
         _tetIndexBuffer = new int[tetCount * 4];
+        _fixedNodeFlags = new int[nodeCount];
         _nodePositions = new Vector3[nodeCount];
         _nodeDebugObjects = new GameObject[nodeCount];
 
         FEMPlugin.GetNodePositions(_nodePositionBuffer, nodeCount);
         FEMPlugin.GetTetIndices(_tetIndexBuffer, tetCount);
+        FEMPlugin.GetFixedNodeFlags(_fixedNodeFlags, nodeCount);
 
         CreateNodeDebugObjects();
         UpdateNodePositionsFromBuffer();
@@ -94,6 +97,13 @@ public class FEMObject : MonoBehaviour
             if (collider != null)
             {
                 Destroy(collider);
+            }
+
+            Renderer renderer = sphere.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                bool isFixed = _fixedNodeFlags != null && i < _fixedNodeFlags.Length && _fixedNodeFlags[i] == 1;
+                renderer.material.color = isFixed ? Color.red : Color.green;
             }
 
             _nodeDebugObjects[i] = sphere;

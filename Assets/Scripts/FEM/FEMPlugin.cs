@@ -41,4 +41,7 @@ public class FEMPlugin
 
     [DllImport("SoftSimulEngine")]
     public static extern void AddImpulseToNode(int nodeIndex, float ix, float iy, float iz);
+
+    [DllImport("SoftSimulEngine")]
+    public static extern void GetFixedNodeFlags(int[] outFlags, int nodeCount);
 }

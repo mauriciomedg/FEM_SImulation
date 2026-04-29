@@ -268,6 +268,19 @@ extern "C"
         }
     }
 
+    void GetFixedNodeFlags(int* outFlags, int nodeCount)
+    {
+        if (outFlags == nullptr || nodeCount <= 0)
+            return;
+
+        const int count = min(nodeCount, static_cast<int>(g_nodes.size()));
+
+        for (int i = 0; i < count; ++i)
+        {
+            outFlags[i] = g_nodes[i].isFixed ? 1 : 0;
+        }
+    }
+
     void SetVertices(const float* vertices, int vertexCount)
     {
         if (vertices == nullptr || vertexCount <= 0)
