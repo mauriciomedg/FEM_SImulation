@@ -118,6 +118,11 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
     </Link>
+    <PostBuildEvent>
+      <Command>if not exist "$(SolutionDir)..\..\Assets\Plugins\FEM\x86_64" mkdir "$(SolutionDir)..\..\Assets\Plugins\FEM\x86_64"
+copy /Y "$(TargetPath)" "$(SolutionDir)..\..\Assets\Plugins\FEM\x86_64\"
+if exist "$(TargetDir)$(TargetName).pdb" copy /Y "$(TargetDir)$(TargetName).pdb" "$(SolutionDir)..\..\Assets\Plugins\FEM\x86_64\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -137,6 +142,11 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
     </Link>
+    <PostBuildEvent>
+      <Command>if not exist "$(SolutionDir)..\..\Assets\Plugins\FEM\x86_64" mkdir "$(SolutionDir)..\..\Assets\Plugins\FEM\x86_64"
+copy /Y "$(TargetPath)" "$(SolutionDir)..\..\Assets\Plugins\FEM\x86_64\"
+if exist "$(TargetDir)$(TargetName).pdb" copy /Y "$(TargetDir)$(TargetName).pdb" "$(SolutionDir)..\..\Assets\Plugins\FEM\x86_64\"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
