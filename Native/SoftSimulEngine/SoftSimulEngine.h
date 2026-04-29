@@ -24,5 +24,6 @@ extern "C"
     SOFTSIMULENGINE_API void GetNodePositions(float* outPositions, int nodeCount);
     SOFTSIMULENGINE_API int GetTetCount();
     SOFTSIMULENGINE_API void GetTetIndices(int* outIndices, int tetCount);
+    SOFTSIMULENGINE_API void AddImpulseToNode(int nodeIndex, float ix, float iy, float iz);
 
 }

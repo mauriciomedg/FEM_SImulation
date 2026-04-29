@@ -211,6 +211,21 @@ extern "C"
         }
     }
 
+    void AddImpulseToNode(int nodeIndex, float ix, float iy, float iz)
+    {
+        if (nodeIndex < 0 || nodeIndex >= static_cast<int>(g_nodes.size()))
+            return;
+
+        Node& node = g_nodes[nodeIndex];
+
+        if (node.isFixed || node.invMass <= 0.0f)
+            return;
+
+        node.velocity.x += ix;
+        node.velocity.y += iy;
+        node.velocity.z += iz;
+    }
+
     int GetNodeCount()
     {
         return static_cast<int>(g_nodes.size());

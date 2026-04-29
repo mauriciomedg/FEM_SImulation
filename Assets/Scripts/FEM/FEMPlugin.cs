@@ -38,4 +38,7 @@ public class FEMPlugin
 
     [DllImport("SoftSimulEngine")]
     public static extern float StepTest(float dt);
+
+    [DllImport("SoftSimulEngine")]
+    public static extern void AddImpulseToNode(int nodeIndex, float ix, float iy, float iz);
 }

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class FEMObject : MonoBehaviour
 {
@@ -56,6 +57,12 @@ public class FEMObject : MonoBehaviour
     {
         if (!_initialized)
             return;
+
+        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+        {
+            FEMPlugin.AddImpulseToNode(3, 0.0f, 9.0f, 0.0f);
+            Debug.Log("Impulse applied to top node.");
+        }
 
         int nodeCount = _nodePositions.Length;
         int tetCount = _tetIndexBuffer.Length / 4;
