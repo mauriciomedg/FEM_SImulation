@@ -150,11 +150,18 @@ if exist "$(TargetDir)$(TargetName).pdb" copy /Y "$(TargetDir)$(TargetName).pdb"
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
+    <ClInclude Include="ImplicitSystem.h" />
+    <ClInclude Include="Helper.h" />
+    <ClInclude Include="Math\CGSolver.h" />
+    <ClInclude Include="Math\MathTypes.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="SimulationTypes.h" />
     <ClInclude Include="SoftSimulEngine.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="ImplicitSystem.cpp" />
+    <ClCompile Include="Math\CGSolver.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

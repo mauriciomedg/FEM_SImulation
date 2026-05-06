@@ -3,70 +3,18 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
-
-struct Vec3
-{
-    float x, y, z;
-};
-
-static Vec3 operator+(const Vec3& a, const Vec3& b) { return { a.x + b.x, a.y + b.y, a.z + b.z }; }
-static Vec3 operator-(const Vec3& a, const Vec3& b) { return { a.x - b.x, a.y - b.y, a.z - b.z }; }
-static Vec3 operator*(const Vec3& v, float s) { return { v.x * s, v.y * s, v.z * s }; }
-static Vec3 operator/(const Vec3& v, float s) { return { v.x / s, v.y / s, v.z / s }; }
-
-static Vec3& operator+=(Vec3& a, const Vec3& b)
-{
-    a.x += b.x;
-    a.y += b.y;
-    a.z += b.z;
-    return a;
-}
-
-static float Dot(const Vec3& a, const Vec3& b)
-{
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-static float Length(const Vec3& v)
-{
-    return std::sqrt(Dot(v, v));
-}
-
-static Vec3 Normalize(const Vec3& v)
-{
-    float len = Length(v);
-    if (len < 1e-8f)
-        return { 0.0f, 0.0f, 0.0f };
-    return v / len;
-}
-
-struct Tet
-{
-    int i0, i1, i2, i3;
-};
-
-struct Edge
-{
-    int i;
-    int j;
-    float restLength;
-};
-
-
-struct Node
-{
-    Vec3 restPosition;
-    Vec3 position;
-    Vec3 velocity;
-    float invMass;
-    bool isFixed;
-};
+#include "Math/MathTypes.h"
+#include "SimulationTypes.h"
+#include "Math/CGSolver.h"
+#include "ImplicitSystem.h"
 
 static std::vector<Vec3> g_restNodes;
 static std::vector<Node> g_nodes;
 static std::vector<Tet> g_tets;
 static std::vector<Edge> g_edges;
 
+static std::vector<PointConnection> g_pointConnections;
+static ImplicitSystem g_implicitSystem;
 
 //static std::vector<float> g_originalVertices;
 //static std::vector<float> g_deformedVertices;
@@ -108,26 +56,30 @@ extern "C"
         Node n0{};
         n0.position = g_restNodes[0];
         n0.velocity = { 0.0f, 0.0f, 0.0f };
-        n0.invMass = 0.0f;
-        n0.isFixed = true;
+        n0.mass = 1.0f;
+        n0.invMass = 1.0f;
+        n0.isActive = true;
 
         Node n1{};
         n1.position = g_restNodes[1];
         n1.velocity = { 0.0f, 0.0f, 0.0f };
+        n1.mass = 1.0f;
         n1.invMass = 1.0f;
-        n1.isFixed = false;
+        n1.isActive = true;
 
         Node n2{};
         n2.position = g_restNodes[2];
         n2.velocity = { 0.0f, 0.0f, 0.0f };
+        n2.mass = 1.0f;
         n2.invMass = 1.0f;
-        n2.isFixed = false;
+        n2.isActive = true;
 
         Node n3{};
         n3.position = g_restNodes[3];
         n3.velocity = { 0.0f, 0.0f, 0.0f };
+        n3.mass = 1.0f;
         n3.invMass = 1.0f;
-        n3.isFixed = false;
+        n3.isActive = true;
 
         g_nodes.push_back(n0);
         g_nodes.push_back(n1);
@@ -143,6 +95,89 @@ extern "C"
         AddEdge(1, 2);
         AddEdge(1, 3);
         AddEdge(2, 3);
+
+        g_implicitSystem.Initialize(&g_nodes);
+        g_pointConnections.clear();
+
+        PointConnection c0{};
+        c0.nodeIndex = 0;
+        c0.targetPosition = g_restNodes[0];
+        c0.stiffness = 200.0f;
+        c0.damping = 8.0f;
+        c0.isActive = true;
+
+        PointConnection c1{};
+        c1.nodeIndex = 1;
+        c1.targetPosition = g_restNodes[1];
+        c1.stiffness = 200.0f;
+        c1.damping = 8.0f;
+        c1.isActive = true;
+
+        g_pointConnections.push_back(c0);
+        g_pointConnections.push_back(c1);
+    }
+
+    void StepImplicit(float dt)
+    {
+        if (dt <= 0.0f)
+            return;
+
+        const Vec3 gravity = { 0.0f, -9.81f, 0.0f };
+
+        VectorX b;
+        g_implicitSystem.BuildRhs(b, dt, gravity);
+
+        // Add point connection forces into b
+        for (const PointConnection& connection : g_pointConnections)
+        {
+            if (!connection.isActive)
+                continue;
+
+            int i = connection.nodeIndex;
+            if (i < 0 || i >= static_cast<int>(g_nodes.size()))
+                continue;
+
+            Node& node = g_nodes[i];
+            if (!node.isActive || node.invMass <= 0.0f)
+                continue;
+
+            Vec3 displacement = node.position - connection.targetPosition;
+            Vec3 springForce = displacement * (-connection.stiffness);
+            Vec3 dampingForce = node.velocity * (-connection.damping);
+            Vec3 totalForce = springForce + dampingForce;
+
+            b[3 * i + 0] += dt * totalForce.x;
+            b[3 * i + 1] += dt * totalForce.y;
+            b[3 * i + 2] += dt * totalForce.z;
+        }
+
+        VectorX deltaV(b.size(), 0.0f);
+
+        CGSettings settings;
+        settings.maxIterations = 64;
+        settings.tolerance = 1e-6f;
+
+        auto applyA = [dt](const VectorX& x, VectorX& y)
+            {
+                g_implicitSystem.ApplySystemMatrix(x, y, dt);
+            };
+
+        CGResult cg = SolveConjugateGradient(applyA, b, deltaV, settings);
+
+        const int nodeCount = static_cast<int>(g_nodes.size());
+        for (int i = 0; i < nodeCount; ++i)
+        {
+            Node& node = g_nodes[i];
+
+            if (!node.isActive || node.invMass <= 0.0f)
+                continue;
+
+            node.velocity.x += deltaV[3 * i + 0];
+            node.velocity.y += deltaV[3 * i + 1];
+            node.velocity.z += deltaV[3 * i + 2];
+
+            node.position = node.position + node.velocity * dt;
+        }
     }
 
     void StepSimulation(float dt)
@@ -150,65 +185,7 @@ extern "C"
         if (dt <= 0.0f)
             return;
 
-        const Vec3 gravity = { 0.0f, -9.81f, 0.0f };
-        const float globalDamping = 0.5f;
-        const float edgeStiffness = 80.0f;
-        const float edgeDamping = 3.0f;
-
-        const int nodeCount = static_cast<int>(g_nodes.size());
-        std::vector<Vec3> forces(nodeCount, { 0.0f, 0.0f, 0.0f });
-
-        for (int i = 0; i < nodeCount; ++i)
-        {
-            if (!g_nodes[i].isFixed && g_nodes[i].invMass > 0.0f)
-            {
-                float mass = 1.0f / g_nodes[i].invMass;
-                forces[i] += gravity * mass;
-                forces[i] += g_nodes[i].velocity * (-globalDamping);
-            }
-        }
-
-        for (const Edge& edge : g_edges)
-        {
-            Node& ni = g_nodes[edge.i];
-            Node& nj = g_nodes[edge.j];
-
-            Vec3 delta = nj.position - ni.position;
-            float currentLength = Length(delta);
-            if (currentLength < 1e-8f)
-                continue;
-
-            Vec3 dir = delta / currentLength;
-
-            float stretch = currentLength - edge.restLength;
-
-            Vec3 relativeVelocity = nj.velocity - ni.velocity;
-            float relVelAlongEdge = Dot(relativeVelocity, dir);
-
-            float springForceMagnitude = edgeStiffness * stretch;
-            float dampingForceMagnitude = edgeDamping * relVelAlongEdge;
-
-            Vec3 force = dir * (springForceMagnitude + dampingForceMagnitude);
-
-            forces[edge.i] += force;
-            forces[edge.j] += force * (-1.0f);
-        }
-
-        for (int i = 0; i < nodeCount; ++i)
-        {
-            Node& node = g_nodes[i];
-
-            if (node.isFixed || node.invMass <= 0.0f)
-            {
-                node.position = g_restNodes[i];
-                node.velocity = { 0.0f, 0.0f, 0.0f };
-                continue;
-            }
-
-            Vec3 acceleration = forces[i] * node.invMass;
-            node.velocity += acceleration * dt;
-            node.position += node.velocity * dt;
-        }
+        StepImplicit(dt);
     }
 
     void AddImpulseToNode(int nodeIndex, float ix, float iy, float iz)
@@ -218,7 +195,7 @@ extern "C"
 
         Node& node = g_nodes[nodeIndex];
 
-        if (node.isFixed || node.invMass <= 0.0f)
+        if (!node.isActive || node.invMass <= 0.0f)
             return;
 
         node.velocity.x += ix;
@@ -277,7 +254,7 @@ extern "C"
 
         for (int i = 0; i < count; ++i)
         {
-            outFlags[i] = g_nodes[i].isFixed ? 1 : 0;
+            outFlags[i] = g_nodes[i].isActive ? 1 : 0;
         }
     }
 
@@ -313,49 +290,14 @@ extern "C"
 
     void DeformVertices(float dt)
     {
-        //g_time += dt;
-        //
-        //if (g_originalVertices.empty())
-        //    return;
-        //
-        //const int vertexCount = static_cast<int>(g_originalVertices.size() / 3);
-        //
-        //for (int i = 0; i < vertexCount; ++i)
-        //{
-        //    const int baseIndex = i * 3;
-        //
-        //    const float x = g_originalVertices[baseIndex + 0];
-        //    const float y = g_originalVertices[baseIndex + 1];
-        //    const float z = g_originalVertices[baseIndex + 2];
-        //
-        //    const float offset = 0.1f * std::sinf(g_time * 2.0f + x + z);
-        //
-        //    g_deformedVertices[baseIndex + 0] = x;
-        //    g_deformedVertices[baseIndex + 1] = y + offset;
-        //    g_deformedVertices[baseIndex + 2] = z;
-        //}
     }
 
     void GetVertices(float* outVertices, int vertexCount)
     {
-        //if (outVertices == nullptr || vertexCount <= 0)
-        //    return;
-        //
-        //const int floatCount = vertexCount * 3;
-        //const int availableFloatCount = static_cast<int>(g_deformedVertices.size());
-        //
-        //const int copyCount = floatCount < availableFloatCount ? floatCount : availableFloatCount; //std::min(floatCount, availableFloatCount);
-        //
-        //for (int i = 0; i < copyCount; ++i)
-        //{
-        //    outVertices[i] = g_deformedVertices[i];
-        //}
     }
 
     float StepTest(float dt)
     {
-        //g_time += dt;
-        //return g_time;
         return 0.0f;
     }
 
