@@ -7,9 +7,13 @@ public class FEMObject : MonoBehaviour
     [SerializeField] private Transform mechanicalMeshDebug;
     [SerializeField] private Transform constraintHandles;
 
+    private LineRenderer[] _edgeRenderers;
+    private Material _edgeMaterial;
+
     private float[] _nodePositionBuffer;
     private int[] _tetIndexBuffer;
     private int[] _fixedNodeFlags;
+    private int[] _edgeIndexBuffer;
 
     private Vector3[] _nodePositions;
     private GameObject[] _nodeDebugObjects;
@@ -30,6 +34,7 @@ public class FEMObject : MonoBehaviour
 
         int nodeCount = FEMPlugin.GetNodeCount();
         int tetCount = FEMPlugin.GetTetCount();
+        int edgeCount = FEMPlugin.GetEdgeCount();
 
         Debug.Log($"Native tet object created. Nodes: {nodeCount}, Tets: {tetCount}");
 
@@ -44,14 +49,19 @@ public class FEMObject : MonoBehaviour
         _fixedNodeFlags = new int[nodeCount];
         _nodePositions = new Vector3[nodeCount];
         _nodeDebugObjects = new GameObject[nodeCount];
+        _edgeIndexBuffer = new int[edgeCount * 2];
 
         FEMPlugin.GetNodePositions(_nodePositionBuffer, nodeCount);
         FEMPlugin.GetTetIndices(_tetIndexBuffer, tetCount);
         FEMPlugin.GetFixedNodeFlags(_fixedNodeFlags, nodeCount);
+        FEMPlugin.GetEdges(_edgeIndexBuffer, edgeCount);
 
         CreateNodeDebugObjects();
         UpdateNodePositionsFromBuffer();
         ApplyNodePositionsToDebugObjects();
+
+        CreateEdgeRenderers(edgeCount);
+        UpdateEdgeRenderers();
 
         _initialized = true;
     }
@@ -75,7 +85,7 @@ public class FEMObject : MonoBehaviour
 
         UpdateNodePositionsFromBuffer();
         ApplyNodePositionsToDebugObjects();
-        DrawTetEdges(tetCount);
+        UpdateEdgeRenderers();
     }
 
     private void CreateNodeDebugObjects()
@@ -133,35 +143,65 @@ public class FEMObject : MonoBehaviour
         }
     }
 
-    private void DrawTetEdges(int tetCount)
+    private void CreateEdgeRenderers(int edgeCount)
     {
-        for (int t = 0; t < tetCount; ++t)
+        if (mechanicalMeshDebug == null)
         {
-            int i0 = _tetIndexBuffer[t * 4 + 0];
-            int i1 = _tetIndexBuffer[t * 4 + 1];
-            int i2 = _tetIndexBuffer[t * 4 + 2];
-            int i3 = _tetIndexBuffer[t * 4 + 3];
+            Debug.LogError("FEMObject: MechanicalMesh_Debug reference is missing.");
+            return;
+        }
 
-            DrawEdge(i0, i1);
-            DrawEdge(i0, i2);
-            DrawEdge(i0, i3);
-            DrawEdge(i1, i2);
-            DrawEdge(i1, i3);
-            DrawEdge(i2, i3);
+        _edgeRenderers = new LineRenderer[edgeCount];
+
+        if (_edgeMaterial == null)
+        {
+            Shader shader = Shader.Find("Sprites/Default");
+            _edgeMaterial = new Material(shader);
+            _edgeMaterial.color = Color.green;
+        }
+
+        for (int i = 0; i < edgeCount; ++i)
+        {
+            GameObject edgeObject = new GameObject($"Edge_{i}");
+            edgeObject.transform.SetParent(mechanicalMeshDebug, false);
+
+            LineRenderer lr = edgeObject.AddComponent<LineRenderer>();
+            lr.positionCount = 2;
+            lr.useWorldSpace = false;
+            lr.startWidth = 0.03f;
+            lr.endWidth = 0.03f;
+            lr.material = _edgeMaterial;
+            lr.startColor = Color.green;
+            lr.endColor = Color.green;
+
+            _edgeRenderers[i] = lr;
         }
     }
 
-    private void DrawEdge(int a, int b)
+    private void UpdateEdgeRenderers()
     {
-        if (a < 0 || a >= _nodePositions.Length || b < 0 || b >= _nodePositions.Length)
+        if (_edgeRenderers == null || _edgeIndexBuffer == null)
             return;
 
-        Vector3 worldA = transform.TransformPoint(_nodePositions[a]);
-        Vector3 worldB = transform.TransformPoint(_nodePositions[b]);
+        int edgeCount = _edgeIndexBuffer.Length / 2;
 
-        Debug.DrawLine(worldA, worldB, Color.green);
+        for (int e = 0; e < edgeCount; ++e)
+        {
+            int a = _edgeIndexBuffer[e * 2 + 0];
+            int b = _edgeIndexBuffer[e * 2 + 1];
+
+            if (a < 0 || a >= _nodePositions.Length || b < 0 || b >= _nodePositions.Length)
+                continue;
+
+            LineRenderer lr = _edgeRenderers[e];
+            if (lr == null)
+                continue;
+
+            lr.SetPosition(0, _nodePositions[a]);
+            lr.SetPosition(1, _nodePositions[b]);
+        }
     }
-
+    
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     //void Start()
     //{

@@ -281,6 +281,25 @@ extern "C"
         }
     }
 
+    int GetEdgeCount()
+    {
+        return static_cast<int>(g_edges.size());
+    }
+
+    void GetEdges(int* outEdges, int edgeCount)
+    {
+        if (outEdges == nullptr || edgeCount <= 0)
+            return;
+
+        const int count = min(edgeCount, static_cast<int>(g_edges.size()));
+
+        for (int i = 0; i < count; ++i)
+        {
+            outEdges[i * 2 + 0] = g_edges[i].i;
+            outEdges[i * 2 + 1] = g_edges[i].j;
+        }
+    }
+
     void SetVertices(const float* vertices, int vertexCount)
     {
         if (vertices == nullptr || vertexCount <= 0)

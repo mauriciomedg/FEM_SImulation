@@ -44,4 +44,10 @@ public class FEMPlugin
 
     [DllImport("SoftSimulEngine")]
     public static extern void GetFixedNodeFlags(int[] outFlags, int nodeCount);
+
+    [DllImport("SoftSimulEngine")]
+    public static extern int GetEdgeCount();
+
+    [DllImport("SoftSimulEngine")]
+    public static extern void GetEdges(int[] outEdges, int edgeCount);
 }
